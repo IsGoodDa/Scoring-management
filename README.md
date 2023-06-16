@@ -12,12 +12,19 @@ import java.sql.SQLException;
 
 
 public class Score {
+
     private int id;
+    
     private String studentName;
+    
     private String className;
+    
     private String evaluator;
+    
     private String evaluation;
+    
     private String date;
+    
 
     // 构造函数
     public Score(int id, String studentName, String className, String evaluator, String evaluation, String date) {
