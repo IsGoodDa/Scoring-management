@@ -1,10 +1,15 @@
 为了实现该功能，我们可以使用 Java 编程语言编写代码来连接数据库，并定义一个 Score 实体类用于存储评分信息和提供相应的操作方法，如添加评分、查询所有评分等。具体的代码实现可以参考以下示例。
 
 import java.sql.Connection;
+
 import java.sql.DriverManager;
+
 import java.sql.PreparedStatement;
+
 import java.sql.ResultSet;
+
 import java.sql.SQLException;
+
 
 public class Score {
     private int id;
