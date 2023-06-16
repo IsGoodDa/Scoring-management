@@ -2,8 +2,8 @@
 
 To achieve this functionality, we can write code in the Java programming language to connect to the database and define a Score entity class to store scoring information and provide corresponding action methods, such as adding scores, querying all scores, and so on. For specific code implementation, refer to the following example.
 
-import java.sql.Connection;
 
+import java.sql.Connection;
 import java.sql.DriverManager;
 
 import java.sql.PreparedStatement;
