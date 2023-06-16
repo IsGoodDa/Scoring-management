@@ -1,5 +1,4 @@
-为了实现该功能，我们可以使用 Java 编程语言编写代码来连接数据库，并定义一个 Score 实体类用于存储评分信息和提供相应的操作方法，如添加评分、查询所有评分等。具体的代码实现可以参考以下示例；
-To achieve this functionality, we can write code in the Java programming language to connect to the database and define a Score entity class to store scoring information and provide corresponding action methods, such as adding scores, querying all scores, and so on. For specific code implementation, refer to the following example.
+### 为了实现该功能，我们可以使用 Java 编程语言编写代码来连接数据库，并定义一个 Score 实体类用于存储评分信息和提供相应的操作方法，如添加评分、查询所有评分等。具体的代码实现可以参考以下示例；To achieve this functionality, we can write code in the Java programming language to connect to the database and define a Score entity class to store scoring information and provide corresponding action methods, such as adding scores, querying all scores, and so on. For specific code implementation, refer to the following example.
 
 
 import java.sql.Connection;
