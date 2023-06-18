@@ -2,6 +2,10 @@
 
 ## To achieve this functionality, we can write code in the Java programming language to connect to the database and define a Score entity class to store scoring information and provide corresponding action methods, such as adding scores, querying all scores, and so on. For specific code implementation, refer to the following example.
 
+### 以下是班级管理模块的Java代码示例：
+
+## Here is a Java code example for the class management module:
+
 
 import java.sql.Connection;
 
@@ -178,7 +182,7 @@ public class Score {
     }
 }
 
-<body>
+# <body>
   <header>
     <div class="logo">My Github Page</div>
     <nav>
