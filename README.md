@@ -175,3 +175,17 @@ public class Score {
         this.date = date;
     }
 }
+
+<body>
+  <header>
+    <div class="logo">My Github Page</div>
+    <nav>
+      <a href="#">Home</a>
+      <a href="#">About</a>
+      <a href="#">Contact</a>
+    </nav>
+  </header>
+  <h1>Welcome to My Github Page</h1>
+  <footer>&copy; 2023 My Github Page. All rights reserved.</footer>
+</body>
+</html>
