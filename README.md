@@ -7,180 +7,470 @@
 ## Here is a Java code example for the Score Management module:
 
 
-import java.sql.Connection;
+package com.ruoyi.kx.controller;
 
-import java.sql.DriverManager;
+import com.ruoyi.common.core.controller.BaseController;
+import com.ruoyi.common.core.domain.AjaxResult;
+import com.ruoyi.common.core.page.TableDataInfo;
+import com.ruoyi.kx.bean.ScoreSort;
+import com.ruoyi.kx.domain.*;
+import com.ruoyi.kx.mapper.*;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.stereotype.Controller;
+import org.springframework.web.bind.annotation.*;
 
-import java.sql.PreparedStatement;
+import java.math.BigDecimal;
+import java.math.RoundingMode;
+import java.text.DecimalFormat;
+import java.util.ArrayList;
+import java.util.List;
 
-import java.sql.ResultSet;
+@Controller
+@RequestMapping("/kx/data")
+public class DataAnalysisController extends BaseController {
 
-import java.sql.SQLException;
 
+    @Autowired
+    KxMarkMapper kxMarkMapper;
+    @Autowired
+    KxStudentMapper kxStudentMapper;
+    @Autowired
+    KxTimingMapper kxTimingMapper;
+    @Autowired
+    KxScoreRecordMapper kxScoreRecordMapper;
+    @Autowired
+    KxRateOftenMapper kxRateOftenMapper;
+    @Autowired
+    KxClassesMapper kxClassesMapper;
+    @Autowired
+    KxTimingRateMapper kxTimingRateMapper;
+    @Autowired
+    KxTeacherMapper kxTeacherMapper;
 
-public class Score {
-
-    private int id;
-    
-    private String studentName;
-    
-    private String className;
-    
-    private String evaluator;
-    
-    private String evaluation;
-    
-    private String date;
-    
-
-    // 构造函数
-    public Score(int id, String studentName, String className, String evaluator, String evaluation, String date) {
-        this.id = id;
-        this.studentName = studentName;
-        this.className = className;
-        this.evaluator = evaluator;
-        this.evaluation = evaluation;
-        this.date = date;
+    @CrossOrigin
+    @ResponseBody
+    @GetMapping("/student/{classId}")
+    public TableDataInfo student(@PathVariable("classId") Long classId) {
+        List<KxStudent> list = kxStudentMapper.selectKxStudentByClassId(classId);
+        return getDataTable(list);
     }
 
-    // 添加评分
-    public static void addScore(Score score) {
-        Connection conn = null;
-        PreparedStatement pstmt = null;
+    @CrossOrigin
+    @ResponseBody
+    @GetMapping("/partRate/{classId}/{timingRateId}")
+    public AjaxResult partRate(@PathVariable Long classId, @PathVariable Long timingRateId) {
+        List<KxStudent> kxStudents = kxStudentMapper.selectKxStudentByClassId(classId);
 
-        try {
-            // 连接数据库
-            conn = DriverManager.getConnection("jdbc:mysql://localhost:3306/mydb", "root", "password");
+        if (kxStudents == null || kxStudents.size() == 0) {
+            return error("该班级不存在");
+        }
+        KxTimingRate kxTimingRate = kxTimingRateMapper.selectKxTimingRateById(timingRateId);
+        if (kxTimingRate == null) {
+            return error("周期评不存在");
+        }
 
-            // 拼接 SQL 语句
-            String sql = "INSERT INTO scores(student_name, class_name, evaluator, evaluation, date) VALUES (?, ?, ?, ?, ?)";
-            pstmt = conn.prepareStatement(sql);
+        Long count = kxTimingRateMapper.selectPeriodCount(kxTimingRate.getType());
 
-            // 设置参数
-            pstmt.setString(1, score.getStudentName());
-            pstmt.setString(2, score.getClassName());
-            pstmt.setString(3, score.getEvaluator());
-            pstmt.setString(4, score.getEvaluation());
-            pstmt.setString(5, score.getDate());
+        long l = count * kxStudents.size();
 
-            // 执行 SQL 语句
-            pstmt.executeUpdate();
+        List<KxScoreRecord> kxScoreRecords = kxScoreRecordMapper.selectKxScoreRecordByClassIdAndTimingRateId(classId, timingRateId);
+        float l1 = (float) kxScoreRecords.size() / l;
+        return success().put("data",l1);
+    }
 
-            System.out.println("添加评分成功！");
-        } catch (SQLException e) {
-            e.printStackTrace();
-        } finally {
-            // 关闭连接
-            try {
-                if (pstmt != null) pstmt.close();
-                if (conn != null) conn.close();
-            } catch (SQLException e) {
-                e.printStackTrace();
+    /*查看学生发展评价分数*/
+    @CrossOrigin
+    @ResponseBody
+    @GetMapping("/select/fiveRate/{studentId}/{timingId}")
+    public AjaxResult rateFiveScore(@PathVariable Long studentId, @PathVariable Long timingId) {
+        KxTiming kxTiming = kxTimingMapper.selectKxTimingById(timingId);
+        KxStudent kxStudent = kxStudentMapper.selectKxStudentById(studentId);
+        if (kxTiming == null) {
+            return error("找不到该学期");
+        }
+
+        if (kxStudent == null) {
+            return error("找不到该学生");
+        }
+        FiveRate fiveRate = new FiveRate(getScoreSort("A", kxTiming, kxStudent).getScore(), getScoreSort("B", kxTiming, kxStudent).getScore(), getScoreSort("C", kxTiming, kxStudent).getScore(), getScoreSort("D", kxTiming, kxStudent).getScore(), getScoreSort("E", kxTiming, kxStudent).getScore());
+
+        return success().put("data", fiveRate);
+
+    }
+
+    private ScoreSort getScoreSort(String type, KxTiming kxTiming, KxStudent kxStudent) {
+        ScoreSort scoreSort = kxScoreRecordMapper.selectKxScoreRecordBySort(kxStudent.getId(), type, 1L, kxTiming.getId());
+        DecimalFormat df = new DecimalFormat("#.##"); // 创建 DecimalFormat 对象，指定格式为保留最多两位小数
+        df.setRoundingMode(RoundingMode.DOWN); // 设置舍入模式为向下舍入
+        float rounded;
+
+
+        {
+            float v = kxRateOftenMapper.selectKxScoreOftenAvRate(kxStudent.getId(), kxTiming.getId());
+            rounded = Float.parseFloat(df.format(scoreSort.getScore() + v)); // 格式化小数部分并将结果转换为 float 类型
+        }
+
+        String result = df.format(rounded);
+        scoreSort.setStudentName(kxStudent.getName());
+        scoreSort.setImagePath(kxStudent.getImagePath());
+        scoreSort.setScore(Float.parseFloat(result));
+        KxMark kxMark = kxStudent.getKxMark();
+
+        if (kxMark != null) {
+            char firstChar = kxStudent.getClasses().getName().charAt(0);
+            if (firstChar == '一' || firstChar == '二') {
+
+                scoreSort.setScore(changeFloat(scoreSort.getScore() + getRateMarkScore(kxMark.getMoralScore(), true).floatValue() + getRateMarkScore(kxMark.getChineseScore(), true).floatValue() + getRateMarkScore(kxMark.getMathScore(), true).floatValue() + getRateMarkScore(kxMark.getScienceScore(), true).floatValue() + getRateMarkScore(kxMark.getPhysicalScore(), true).floatValue() + getRateMarkScore(kxMark.getArtScore(), true).floatValue() + getRateMarkScore(kxMark.getMusicScore(), true).floatValue() + getRateMarkScore(kxMark.getLaoDongScore(), true).floatValue()
+//                                       getRateMarkScore(kxMark.getEnglishScore(), true).floatValue()
+                ));
+
+
+            } else {
+                logger.info("kxMark111:{}", kxMark.getMoralScore());
+
+                scoreSort.setScore(changeFloat(scoreSort.getScore() + getRateMarkScore(kxMark.getMoralScore(), false).floatValue() + getRateMarkScore(kxMark.getChineseScore(), false).floatValue() + getRateMarkScore(kxMark.getMathScore(), false).floatValue() + getRateMarkScore(kxMark.getScienceScore(), false).floatValue() + getRateMarkScore(kxMark.getPhysicalScore(), false).floatValue() + getRateMarkScore(kxMark.getArtScore(), false).floatValue() + getRateMarkScore(kxMark.getMusicScore(), false).floatValue() + getRateMarkScore(kxMark.getEnglishScore(), false).floatValue()));
+
+
             }
+
+        }
+        return scoreSort;
+    }
+
+    /*查询男女比例*/
+    @CrossOrigin
+    @GetMapping("/select/ratioOfMenToWomen")
+    @ResponseBody
+    public AjaxResult ratioOfMenToWomen() {
+        List<RatioOfMenToWomen> ratioOfMenToWomen = kxStudentMapper.ratioOfMenToWomen();
+        if (ratioOfMenToWomen == null || ratioOfMenToWomen.size() == 0) {
+            return error("未查询到结果");
+        } else {
+            return success().put("data", ratioOfMenToWomen);
         }
     }
 
-    // 查询所有评分
-    public static Score[] getAllScores() {
-        Connection conn = null;
-        PreparedStatement pstmt = null;
-        ResultSet rs = null;
-        Score[] scores = null;
+    @CrossOrigin
+    @GetMapping("/select/selectTeacherNum")
+    @ResponseBody
+    public AjaxResult selectTeacherNum() {
+        Long aLong = kxTeacherMapper.selectKxTeacherNumber();
+        if (aLong == null) {
+            return error("未查询到结果");
+        } else {
+            return success().put("data", aLong);
+        }
+    }
 
-        try {
-            // 连接数据库
-            conn = DriverManager.getConnection("jdbc:mysql://localhost:3306/mydb", "root", "password");
+    @CrossOrigin
+    @GetMapping("/select/numberOfReviews")
+    @ResponseBody
+    public AjaxResult numberOfReviews() {
+        NumberOfReviews numberOfReviews = kxScoreRecordMapper.NumberOfReviews();
+        if (numberOfReviews == null) {
+            return error("未查询到结果");
+        } else {
+            return success().put("data", numberOfReviews);
+        }
+    }
 
-            // 拼接 SQL 语句
-            String sql = "SELECT * FROM scores";
-            pstmt = conn.prepareStatement(sql);
-            rs = pstmt.executeQuery();
+    @CrossOrigin
+    @GetMapping("/select/week")
+    @ResponseBody
+    public AjaxResult queryWeek() {
 
-            // 获取评分个数
-            rs.last();
-            int numRows = rs.getRow();
-            scores = new Score[numRows];
-            rs.beforeFirst();
+        List<KxTimingRate> kxTimingRates = kxTimingRateMapper.queryWeek();
+        if (kxTimingRates.size() == 0) {
+            return error("未找到结果");
+        } else {
+            return success().put("last", kxTimingRates.get(0)).put("now", kxTimingRates.get(1));
+        }
+    }
 
-            // 解析查询结果
-            int i = 0;
-            while (rs.next()) {
-                int id = rs.getInt("id");
-                String studentName = rs.getString("student_name");
-                String className = rs.getString("class_name");
-                String evaluator = rs.getString("evaluator");
-                String evaluation = rs.getString("evaluation");
-                String date = rs.getString("date");
 
-                Score score = new Score(id, studentName, className, evaluator, evaluation, date);
-                scores[i] = score;
-                i++;
+    @CrossOrigin
+    @GetMapping("/select/month")
+    @ResponseBody
+    public AjaxResult queryMonth() {
+
+        List<KxTimingRate> kxTimingRates = kxTimingRateMapper.queryMonth();
+        if (kxTimingRates.size() == 0) {
+            return error("未找到结果");
+        } else {
+            return success().put("last", kxTimingRates.get(0)).put("now", kxTimingRates.get(1));
+        }
+    }
+
+
+    @CrossOrigin
+    @GetMapping("/class/avMark/{classId}/{timingId}")
+    @ResponseBody
+    public AjaxResult ClassSelectKxMarkAv(@PathVariable Long classId, @PathVariable Long timingId) {
+        AvMark kxMark = kxMarkMapper.selectKxMarkAv(classId, timingId);
+        if (kxMark == null) {
+            return error("未查询到结果");
+        } else {
+            return success().put("data", kxMark);
+        }
+    }
+
+    /*查询年级平均分*/
+    @CrossOrigin
+    @GetMapping("/grande/avMark/{name}/{timingId}")
+    @ResponseBody
+    public AjaxResult grandeSelectKxMarkAv(@PathVariable String name, @PathVariable Long timingId) {
+        AvMark kxMark = kxMarkMapper.grandeSelectKxMarkAv(name, timingId);
+        if (kxMark == null) {
+            return error("未查询到结果");
+        } else {
+            return success().put("class", name + "年级").put("rows", kxMark);
+        }
+    }
+
+    public Float changeFloat(Float number) {
+        DecimalFormat decimalFormat = new DecimalFormat("#.#");
+        String formattedNumber = decimalFormat.format(number);
+        return Float.parseFloat(formattedNumber);
+    }
+
+    public BigDecimal getRateMarkScore(BigDecimal score, boolean flag) {
+
+        if (flag) {
+            return score;
+        }
+        if (score != null) {
+            if (score.compareTo(BigDecimal.valueOf(90)) >= 0) {
+                return BigDecimal.valueOf(5);
+            } else if (score.compareTo(BigDecimal.valueOf(80)) >= 0) {
+                return BigDecimal.valueOf(4);
+            } else if (score.compareTo(BigDecimal.valueOf(70)) >= 0) {
+                return BigDecimal.valueOf(3);
+            } else if (score.compareTo(BigDecimal.valueOf(60)) >= 0) {
+                return BigDecimal.valueOf(2);
+            } else if (score.compareTo(BigDecimal.valueOf(0)) > 0) {
+                return BigDecimal.valueOf(1);
+            } else {
+                //英语分0分就是没考 可能是三年级以下
+                return BigDecimal.valueOf(0);
             }
-        } catch (SQLException e) {
-            e.printStackTrace();
-        } finally {
-            // 关闭连接
-            try {
-                if (rs != null) rs.close();
-                if (pstmt != null) pstmt.close();
-                if (conn != null) conn.close();
-            } catch (SQLException e) {
-                e.printStackTrace();
-            }
+        } else {
+            return BigDecimal.valueOf(0);
+        }
+    }
+
+
+    /*查询一个班级*/
+    @CrossOrigin
+    @GetMapping("/class/avRateScore/{classId}/{timingId}")
+    @ResponseBody
+    public AjaxResult classAvRateScore(@PathVariable Long classId, @PathVariable Long timingId) {
+
+
+        String type = "E";
+        KxClasses kxClasses = kxClassesMapper.selectKxClassesById(classId);
+        List<KxStudent> kxStudents = kxStudentMapper.selectKxStudentByClassId(classId);
+//        KxTimingRate kxTimingRate = kxTimingRateMapper.selectKxTimingRateNow();
+//        KxTiming kxTiming = kxTimingMapper.selectKxTimingByNow();
+        KxTiming kxTiming = kxTimingMapper.selectKxTimingById(timingId);
+
+        if (kxTiming == null) {
+            return error("找不到该学期");
         }
 
-        return scores;
+        ArrayList<ScoreSort> scoreSorts = new ArrayList<>();
+        for (KxStudent kxStudent : kxStudents) {
+            ScoreSort scoreSort = kxScoreRecordMapper.selectKxScoreRecordBySort(kxStudent.getId(), type, 1L, kxTiming.getId());
+            DecimalFormat df = new DecimalFormat("#.##"); // 创建 DecimalFormat 对象，指定格式为保留最多两位小数
+            df.setRoundingMode(RoundingMode.DOWN); // 设置舍入模式为向下舍入
+            float rounded;
+
+
+            {
+                float v = kxRateOftenMapper.selectKxScoreOftenAvRate(kxStudent.getId(), kxTiming.getId());
+                rounded = Float.parseFloat(df.format(scoreSort.getScore() + v)); // 格式化小数部分并将结果转换为 float 类型
+            }
+
+            String result = df.format(rounded);
+            scoreSort.setStudentName(kxStudent.getName());
+            scoreSort.setImagePath(kxStudent.getImagePath());
+            scoreSort.setScore(Float.parseFloat(result));
+            KxMark kxMark = kxStudent.getKxMark();
+
+            if (kxMark != null) {
+                char firstChar = kxStudent.getClasses().getName().charAt(0);
+                if (firstChar == '一' || firstChar == '二') {
+
+                    scoreSort.setScore(changeFloat(scoreSort.getScore() + getRateMarkScore(kxMark.getMoralScore(), true).floatValue() + getRateMarkScore(kxMark.getChineseScore(), true).floatValue() + getRateMarkScore(kxMark.getMathScore(), true).floatValue() + getRateMarkScore(kxMark.getScienceScore(), true).floatValue() + getRateMarkScore(kxMark.getPhysicalScore(), true).floatValue() + getRateMarkScore(kxMark.getArtScore(), true).floatValue() + getRateMarkScore(kxMark.getMusicScore(), true).floatValue() + getRateMarkScore(kxMark.getLaoDongScore(), true).floatValue()
+//                                       getRateMarkScore(kxMark.getEnglishScore(), true).floatValue()
+                    ));
+
+
+                } else {
+                    logger.info("kxMark111:{}", kxMark.getMoralScore());
+
+                    scoreSort.setScore(changeFloat(scoreSort.getScore() + getRateMarkScore(kxMark.getMoralScore(), false).floatValue() + getRateMarkScore(kxMark.getChineseScore(), false).floatValue() + getRateMarkScore(kxMark.getMathScore(), false).floatValue() + getRateMarkScore(kxMark.getScienceScore(), false).floatValue() + getRateMarkScore(kxMark.getPhysicalScore(), false).floatValue() + getRateMarkScore(kxMark.getArtScore(), false).floatValue() + getRateMarkScore(kxMark.getMusicScore(), false).floatValue() + getRateMarkScore(kxMark.getEnglishScore(), false).floatValue()));
+
+
+                }
+
+            }
+            scoreSorts.add(scoreSort);
+        }
+
+        //只是排序一下
+        scoreSorts.sort(new ScoreSort());
+
+        float avScore = 0;
+        for (ScoreSort scoreSort : scoreSorts) {
+            avScore += scoreSort.getScore();
+        }
+        avScore = avScore / scoreSorts.size();
+        return success().put("className", kxClasses.getName()).put("data", avScore).put("week", kxTiming);
+
+
     }
 
-    // getters and setters
-    public int getId() {
-        return id;
-    }
+    /*查询一个年级的所有班的每个班的发展性平均分*/
+    @CrossOrigin
+    @GetMapping("/grade/avRateScore/{name}/{timingId}")
+    @ResponseBody
+    public AjaxResult gradeAvRateScore(@PathVariable String name, @PathVariable Long timingId) {
+/*
+        String type = "E";
+        float avScore = 0;
+        float size = 0;
+//        KxTiming kxTiming = kxTimingMapper.selectKxTimingByNow();
+        KxTiming kxTiming = kxTimingMapper.selectKxTimingById(timingId);
 
-    public void setId(int id) {
-        this.id = id;
-    }
+        if (kxTiming == null) {
+            return error("找不到该学期");
+        }
 
-    public String getStudentName() {
-        return studentName;
-    }
+        List<KxClasses> kxClasses = kxClassesMapper.selectKxClassesByFirst(name);
 
-    public void setStudentName(String studentName) {
-        this.studentName = studentName;
-    }
+        if (kxClasses == null && kxClasses.size() == 0) {
+            return error("未找到对应班级");
+        }
 
-    public String getClassName() {
-        return className;
-    }
+        for (KxClasses kxClass : kxClasses) {
+            List<KxStudent> kxStudents = kxStudentMapper.selectKxStudentByClassId(kxClass.getId());
+//        KxTimingRate kxTimingRate = kxTimingRateMapper.selectKxTimingRateNow();
+            ArrayList<ScoreSort> scoreSorts = new ArrayList<>();
+            for (KxStudent kxStudent : kxStudents) {
+                ScoreSort scoreSort = kxScoreRecordMapper.selectKxScoreRecordBySort(kxStudent.getId(), type, 1L, kxTiming.getId());
+                DecimalFormat df = new DecimalFormat("#.##"); // 创建 DecimalFormat 对象，指定格式为保留最多两位小数
+                df.setRoundingMode(RoundingMode.DOWN); // 设置舍入模式为向下舍入
+                float rounded;
 
-    public void setClassName(String className) {
-        this.className = className;
-    }
 
-    public String getEvaluator() {
-        return evaluator;
-    }
+                {
+                    float v = kxRateOftenMapper.selectKxScoreOftenAvRate(kxStudent.getId(), kxTiming.getId());
+                    rounded = Float.parseFloat(df.format(scoreSort.getScore() + v)); // 格式化小数部分并将结果转换为 float 类型
+                }
 
-    public void setEvaluator(String evaluator) {
-        this.evaluator = evaluator;
-    }
+                String result = df.format(rounded);
+                scoreSort.setStudentName(kxStudent.getName());
+                scoreSort.setImagePath(kxStudent.getImagePath());
+                scoreSort.setScore(Float.parseFloat(result));
+                KxMark kxMark = kxStudent.getKxMark();
 
-    public String getEvaluation() {
-        return evaluation;
-    }
+                if (kxMark != null) {
+                    char firstChar = kxStudent.getClasses().getName().charAt(0);
+                    if (firstChar == '一' || firstChar == '二') {
 
-    public void setEvaluation(String evaluation) {
-        this.evaluation = evaluation;
-    }
+                        scoreSort.setScore(changeFloat(scoreSort.getScore() + getRateMarkScore(kxMark.getMoralScore(), true).floatValue() + getRateMarkScore(kxMark.getChineseScore(), true).floatValue() + getRateMarkScore(kxMark.getMathScore(), true).floatValue() + getRateMarkScore(kxMark.getScienceScore(), true).floatValue() + getRateMarkScore(kxMark.getPhysicalScore(), true).floatValue() + getRateMarkScore(kxMark.getArtScore(), true).floatValue() + getRateMarkScore(kxMark.getMusicScore(), true).floatValue() + getRateMarkScore(kxMark.getLaoDongScore(), true).floatValue()
+//                                       getRateMarkScore(kxMark.getEnglishScore(), true).floatValue()
+                        ));
 
-    public String getDate() {
-        return date;
-    }
 
-    public void setDate(String date) {
-        this.date = date;
+                    } else {
+                        logger.info("kxMark111:{}", kxMark.getMoralScore());
+
+                        scoreSort.setScore(changeFloat(scoreSort.getScore() + getRateMarkScore(kxMark.getMoralScore(), false).floatValue() + getRateMarkScore(kxMark.getChineseScore(), false).floatValue() + getRateMarkScore(kxMark.getMathScore(), false).floatValue() + getRateMarkScore(kxMark.getScienceScore(), false).floatValue() + getRateMarkScore(kxMark.getPhysicalScore(), false).floatValue() + getRateMarkScore(kxMark.getArtScore(), false).floatValue() + getRateMarkScore(kxMark.getMusicScore(), false).floatValue() + getRateMarkScore(kxMark.getEnglishScore(), false).floatValue()));
+
+
+                    }
+
+                }
+
+                scoreSorts.add(scoreSort);
+            }
+            scoreSorts.sort(new ScoreSort());
+            size+=scoreSorts.size();
+            for (ScoreSort scoreSort : scoreSorts) {
+                avScore += scoreSort.getScore();
+            }
+        }
+        avScore = avScore / size;
+        return success().put("data", avScore).put("week", kxTiming);
+    */
+
+        List<KxClasses> kxClasses = kxClassesMapper.selectKxClassesByFirst(name);
+        ArrayList<AvRateClass> avScores = new ArrayList<>();
+        KxTiming kxTiming = kxTimingMapper.selectKxTimingById(timingId);
+
+        for (KxClasses kxClass : kxClasses) {
+            String type = "E";
+            List<KxStudent> kxStudents = kxStudentMapper.selectKxStudentByClassId(kxClass.getId());
+//        KxTimingRate kxTimingRate = kxTimingRateMapper.selectKxTimingRateNow();
+//        KxTiming kxTiming = kxTimingMapper.selectKxTimingByNow();
+
+            if (kxTiming == null) {
+                return error("找不到该学期");
+            }
+
+            ArrayList<ScoreSort> scoreSorts = new ArrayList<>();
+            for (KxStudent kxStudent : kxStudents) {
+                ScoreSort scoreSort = kxScoreRecordMapper.selectKxScoreRecordBySort(kxStudent.getId(), type, 1L, kxTiming.getId());
+                DecimalFormat df = new DecimalFormat("#.##"); // 创建 DecimalFormat 对象，指定格式为保留最多两位小数
+                df.setRoundingMode(RoundingMode.DOWN); // 设置舍入模式为向下舍入
+                float rounded;
+
+
+                {
+                    float v = kxRateOftenMapper.selectKxScoreOftenAvRate(kxStudent.getId(), kxTiming.getId());
+                    rounded = Float.parseFloat(df.format(scoreSort.getScore() + v)); // 格式化小数部分并将结果转换为 float 类型
+                }
+
+                String result = df.format(rounded);
+                scoreSort.setStudentName(kxStudent.getName());
+                scoreSort.setImagePath(kxStudent.getImagePath());
+                scoreSort.setScore(Float.parseFloat(result));
+                KxMark kxMark = kxStudent.getKxMark();
+
+                if (kxMark != null) {
+                    char firstChar = kxStudent.getClasses().getName().charAt(0);
+                    if (firstChar == '一' || firstChar == '二') {
+
+                        scoreSort.setScore(changeFloat(scoreSort.getScore() + getRateMarkScore(kxMark.getMoralScore(), true).floatValue() + getRateMarkScore(kxMark.getChineseScore(), true).floatValue() + getRateMarkScore(kxMark.getMathScore(), true).floatValue() + getRateMarkScore(kxMark.getScienceScore(), true).floatValue() + getRateMarkScore(kxMark.getPhysicalScore(), true).floatValue() + getRateMarkScore(kxMark.getArtScore(), true).floatValue() + getRateMarkScore(kxMark.getMusicScore(), true).floatValue() + getRateMarkScore(kxMark.getLaoDongScore(), true).floatValue()
+//                                       getRateMarkScore(kxMark.getEnglishScore(), true).floatValue()
+                        ));
+
+
+                    } else {
+                        logger.info("kxMark111:{}", kxMark.getMoralScore());
+
+                        scoreSort.setScore(changeFloat(scoreSort.getScore() + getRateMarkScore(kxMark.getMoralScore(), false).floatValue() + getRateMarkScore(kxMark.getChineseScore(), false).floatValue() + getRateMarkScore(kxMark.getMathScore(), false).floatValue() + getRateMarkScore(kxMark.getScienceScore(), false).floatValue() + getRateMarkScore(kxMark.getPhysicalScore(), false).floatValue() + getRateMarkScore(kxMark.getArtScore(), false).floatValue() + getRateMarkScore(kxMark.getMusicScore(), false).floatValue() + getRateMarkScore(kxMark.getEnglishScore(), false).floatValue()));
+
+
+                    }
+
+                }
+                scoreSorts.add(scoreSort);
+            }
+            scoreSorts.sort(new ScoreSort());
+
+            float avScore = 0;
+            for (ScoreSort scoreSort : scoreSorts) {
+                avScore += scoreSort.getScore();
+            }
+            avScore = avScore / scoreSorts.size();
+            avScores.add(new AvRateClass(avScore, kxClass.getName()));
+        }
+        return success().put("rows", avScores).put("week", kxTiming);
     }
 }
+
 
 # <body>
   <header>
